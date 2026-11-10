@@ -45,8 +45,9 @@
 </head>
 <body>
 <main>
-  <h1>BG02 写真プッシュ</h1>
+  <h1>BG02 写真プッシュ <span style="font-size:12px;color:#66707d;">v4</span></h1>
   <div class="env" id="envText"></div>
+  <div class="banner" id="envBanner"></div>
 
   <section class="card">
     <div class="step"><span class="num">1</span><h2>バッジに接続</h2></div>
@@ -332,8 +333,18 @@ function runEnvCheck(){
   msgs.push(btSupported ? 'Web Bluetooth API: OK' : 'Web Bluetooth API: NG（Android の Chrome で直接開いてください）');
   msgs.push(inFrame ? '表示方法: 埋め込み表示（Bluetooth がブロックされることがあります）' : '表示方法: OK（直接表示）');
   el('envText').textContent = msgs.join(' ／ ');
-  if(btSupported) log('準備完了。「BG02に接続」を押してください。');
-  else log('Web Bluetooth が使えない環境です。Chrome でこのページを直接開いてください。', 'err');
+  if(btSupported){
+    log('準備完了。「BG02に接続」を押してください。');
+  } else {
+    log('Web Bluetooth が使えない環境です。Chrome でこのページを直接開いてください。', 'err');
+    var b = el('envBanner');
+    b.className = 'banner show ng';
+    b.textContent = '';
+    var t = document.createElement('span'); t.textContent = 'このブラウザでは Bluetooth が使えません'; b.appendChild(t);
+    var d = document.createElement('span'); d.className = 'detail';
+    d.textContent = 'いま開いているブラウザ（Brave やアプリ内ブラウザなど）では接続できません。URL をコピーして、Android の Chrome に貼り付けて開いてください。Brave で使う場合は brave://flags で「Web Bluetooth API」を有効にしてください。';
+    b.appendChild(d);
+  }
 }
 
 /* ===== 接続 ===== */
@@ -435,6 +446,14 @@ async function connect(useAll){
     var battery = await readBattery();
     el('deviceInfo').textContent = '電池残量: ' + (battery === null ? '不明' : battery + '%') + (battery !== null && battery < 30 ? '（30%未満では転送が拒否されることがあります）' : '');
     if(battery !== null) log('電池残量: ' + battery + '%', 'ok');
+    try {
+      var disSvc = await server.getPrimaryService(0x180a);
+      var disChars = [0x2a24, 0x2a26, 0x2a27, 0x2a29];
+      for(var di = 0; di < disChars.length; di++){
+        try { var dc = await disSvc.getCharacteristic(disChars[di]); await dc.readValue(); } catch(e){}
+      }
+      log('デバイス情報を読みました。');
+    } catch(e){ log('デバイス情報の読み取りはスキップしました。', 'warn'); }
     el('dialInfoText').textContent = '写真は 240×240 の JPEG で送ります（BG02 の仕様）。';
     log('FitPro ハンドシェイクを送信します。');
     await fitProHandshake();
