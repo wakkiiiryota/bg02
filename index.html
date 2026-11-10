@@ -381,56 +381,64 @@ async function connect(useAll){
   connecting = true; updateButtons(); hideConnBanner();
   setStatus('busy', 'デバイス選択待ち…');
   try {
+    /* デバイス選択は参照ページと同一のフィルタ（サービス指定） */
     var options = useAll
       ? { acceptAllDevices: true, optionalServices: OPTIONAL_SERVICES }
-      : { filters: [{ name: 'BG02' }], optionalServices: OPTIONAL_SERVICES };
+      : { filters: [{ services: [UART_SERVICE] }, { manufacturerData: [{ companyIdentifier: 0xaa01 }] }, { namePrefix: '_V' }, { namePrefix: 'BJ' }, { namePrefix: 'DG' }, { namePrefix: 'SuperBand' }], optionalServices: OPTIONAL_SERVICES };
     device = await navigator.bluetooth.requestDevice(options);
     log('選択されたデバイス: ' + (device.name || '（名前なし）'));
     device.addEventListener('gattserverdisconnected', onDisconnected);
-    var setupOk = false, lastErr = null;
-    for(var attempt = 1; attempt <= 3 && !setupOk; attempt++){
+    /* GATT接続＋サービス発見（最大3回再試行。発見できなければ一覧から 7e40 系を探す＝参照ページと同じ） */
+    var svc = null, lastErr = null;
+    for(var attempt = 1; attempt <= 3 && !svc; attempt++){
       try {
         setStatus('busy', attempt > 1 ? ('接続リトライ中…（' + attempt + '回目）') : '接続中…');
         if(attempt > 1){
           try { if(device.gatt && device.gatt.connected) device.gatt.disconnect(); } catch(e){}
-          writeChar = null; notifyChar = null; server = null;
+          server = null;
           await sleep(700);
         }
         server = await device.gatt.connect();
         log('GATT 接続が完了しました。', 'ok');
-        var svc = await server.getPrimaryService(UART_SERVICE);
-        writeChar = await svc.getCharacteristic(WRITE_CHAR);
-        notifyChar = await svc.getCharacteristic(NOTIFY_CHAR);
-        log('UART サービスに接続しました。書き込み方式: ' + (writeChar.properties.writeWithoutResponse ? 'writeWithoutResponse' : 'writeWithResponse'));
-        asmBuf = new Uint8Array(0);
-        clearWaiter();
-        await notifyChar.startNotifications();
-        notifyChar.addEventListener('characteristicvaluechanged', onNotify);
-        log('通知（7e400003）を開始しました。');
-        await writeFrameBytes(PAIR_FRAME);
-        log('ペアフレームを送信しました。');
-        await sleep(350);
-        setupOk = true;
+        try {
+          svc = await server.getPrimaryService(UART_SERVICE);
+        } catch(e){
+          var allSvcs = await server.getPrimaryServices();
+          svc = null;
+          for(var i = 0; i < allSvcs.length; i++){ if(allSvcs[i].uuid.toLowerCase().indexOf('7e40') === 0){ svc = allSvcs[i]; break; } }
+          if(!svc) throw e;
+          log('UART サービスを一覧から見つけました: ' + svc.uuid, 'warn');
+        }
       } catch(e2){
-        lastErr = e2;
+        lastErr = e2; svc = null;
         log('接続の試行 ' + attempt + ' 回目が失敗しました: ' + (e2 && e2.message ? e2.message : String(e2)), 'warn');
       }
     }
-    if(!setupOk) throw (lastErr || new Error('接続できませんでした'));
+    if(!svc) throw (lastErr || new Error('接続できませんでした'));
+    writeChar = await svc.getCharacteristic(WRITE_CHAR);
+    notifyChar = await svc.getCharacteristic(NOTIFY_CHAR);
+    log('UART サービスに接続しました。書き込み方式: ' + (writeChar.properties.writeWithoutResponse ? 'writeWithoutResponse' : 'writeWithResponse'));
+    asmBuf = new Uint8Array(0);
+    clearWaiter();
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+    log('通知（7e400003）を開始しました。');
     connected = true;
     setStatus('on', '接続中：' + (device.name || 'BG02'));
     updateButtons();
+    /* ペアフレーム（失敗しても接続は続行する＝参照ページと同じ） */
+    try {
+      await writeFrameBytes(PAIR_FRAME);
+      log('ペアフレームを送信しました。');
+    } catch(e){ log('ペアフレーム送信でエラー（続行します）: ' + e.message, 'warn'); }
+    await sleep(350);
     var battery = await readBattery();
     el('deviceInfo').textContent = '電池残量: ' + (battery === null ? '不明' : battery + '%') + (battery !== null && battery < 30 ? '（30%未満では転送が拒否されることがあります）' : '');
     if(battery !== null) log('電池残量: ' + battery + '%', 'ok');
+    el('dialInfoText').textContent = '写真は 240×240 の JPEG で送ります（BG02 の仕様）。';
     log('FitPro ハンドシェイクを送信します。');
     await fitProHandshake();
     log('接続の準備が完了しました。', 'ok');
-    try {
-      var diPayload = await requestDialInfo();
-      var di = parseDialInfo(diPayload);
-      if(di) applyDialInfo(di);
-    } catch(e){ log('バッジ仕様の自動取得はスキップしました（' + e.message + '）', 'warn'); }
   } catch(e){
     if(e && e.name === 'NotFoundError'){ log('デバイスが選択されませんでした。バッジの画面が点いているか、SuperBand が強制停止されているか確認してください。', 'err'); }
     else {
@@ -1072,8 +1080,7 @@ async function pushImage(){
   var currentChunk = 0;
   try {
     log('プッシュを開始します（' + blob.length + ' バイト、チャンク ' + chunkSize + ' × ' + totalChunksNow + '）。');
-    setProgress(0, 'ハンドシェイク送信中…', '');
-    await fitProHandshake();
+    setProgress(0, '送信の準備中…', '');
     await sleep(200);
     if(!connected) throw new Error('バッジとの接続が切れました（開始前）');
     var startPayload = new Uint8Array(17);
