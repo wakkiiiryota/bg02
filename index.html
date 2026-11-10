@@ -53,6 +53,7 @@
     <div class="statusline"><span class="dot" id="statusDot"></span><span id="statusText">未接続</span></div>
     <button class="big" id="btnConnect">BG02 に接続</button>
     <button class="linkbtn" id="btnConnectAll">BG02 が一覧に出てこないときはこちら（すべてのデバイスを表示）</button>
+    <div class="banner" id="connBanner"></div>
     <div class="small" id="deviceInfo"></div>
     <div class="small" id="dialInfoText"></div>
     <div style="margin-top:10px"><button class="sub hidden" id="btnDisconnect">切断</button></div>
@@ -361,13 +362,23 @@ async function readBattery(){
     return bv.getUint8(0);
   } catch(e){ return null; }
 }
+function showConnError(title, detail){
+  var b = el('connBanner');
+  b.className = 'banner show ng';
+  b.textContent = '';
+  var t = document.createElement('span'); t.textContent = title; b.appendChild(t);
+  if(detail){ var d = document.createElement('span'); d.className = 'detail'; d.textContent = detail; b.appendChild(d); }
+}
+function hideConnBanner(){ el('connBanner').className = 'banner'; el('connBanner').textContent = ''; }
+var CONN_CHECKLIST = '確認の順番: ① SuperBand を強制停止（設定 → アプリ → SuperBand → 強制停止） ② バッジの画面を点ける ③ 充電ケーブルを抜く ④ スマホの Bluetooth がオンになっているか';
 async function connect(useAll){
   if(connecting || connected) return;
   if(!btSupported){
     log('この環境では Web Bluetooth が使えません。Android の Chrome で、このページを直接（埋め込みではなく）開いてください。', 'err');
+    showConnError('このブラウザでは Bluetooth が使えません', 'Android の Chrome でこのページを開いてください。Brave の場合は brave://flags で「Web Bluetooth API」を有効にすると使えることがあります。');
     return;
   }
-  connecting = true; updateButtons();
+  connecting = true; updateButtons(); hideConnBanner();
   setStatus('busy', 'デバイス選択待ち…');
   try {
     var options = useAll
@@ -376,21 +387,36 @@ async function connect(useAll){
     device = await navigator.bluetooth.requestDevice(options);
     log('選択されたデバイス: ' + (device.name || '（名前なし）'));
     device.addEventListener('gattserverdisconnected', onDisconnected);
-    setStatus('busy', '接続中…');
-    server = await device.gatt.connect();
-    log('GATT 接続が完了しました。', 'ok');
-    var svc = await server.getPrimaryService(UART_SERVICE);
-    writeChar = await svc.getCharacteristic(WRITE_CHAR);
-    notifyChar = await svc.getCharacteristic(NOTIFY_CHAR);
-    log('UART サービスに接続しました。書き込み方式: ' + (writeChar.properties.writeWithoutResponse ? 'writeWithoutResponse' : 'writeWithResponse'));
-    asmBuf = new Uint8Array(0);
-    clearWaiter();
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
-    log('通知（7e400003）を開始しました。');
-    await writeFrameBytes(PAIR_FRAME);
-    log('ペアフレームを送信しました。');
-    await sleep(350);
+    var setupOk = false, lastErr = null;
+    for(var attempt = 1; attempt <= 3 && !setupOk; attempt++){
+      try {
+        setStatus('busy', attempt > 1 ? ('接続リトライ中…（' + attempt + '回目）') : '接続中…');
+        if(attempt > 1){
+          try { if(device.gatt && device.gatt.connected) device.gatt.disconnect(); } catch(e){}
+          writeChar = null; notifyChar = null; server = null;
+          await sleep(700);
+        }
+        server = await device.gatt.connect();
+        log('GATT 接続が完了しました。', 'ok');
+        var svc = await server.getPrimaryService(UART_SERVICE);
+        writeChar = await svc.getCharacteristic(WRITE_CHAR);
+        notifyChar = await svc.getCharacteristic(NOTIFY_CHAR);
+        log('UART サービスに接続しました。書き込み方式: ' + (writeChar.properties.writeWithoutResponse ? 'writeWithoutResponse' : 'writeWithResponse'));
+        asmBuf = new Uint8Array(0);
+        clearWaiter();
+        await notifyChar.startNotifications();
+        notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+        log('通知（7e400003）を開始しました。');
+        await writeFrameBytes(PAIR_FRAME);
+        log('ペアフレームを送信しました。');
+        await sleep(350);
+        setupOk = true;
+      } catch(e2){
+        lastErr = e2;
+        log('接続の試行 ' + attempt + ' 回目が失敗しました: ' + (e2 && e2.message ? e2.message : String(e2)), 'warn');
+      }
+    }
+    if(!setupOk) throw (lastErr || new Error('接続できませんでした'));
     connected = true;
     setStatus('on', '接続中：' + (device.name || 'BG02'));
     updateButtons();
@@ -406,8 +432,12 @@ async function connect(useAll){
       if(di) applyDialInfo(di);
     } catch(e){ log('バッジ仕様の自動取得はスキップしました（' + e.message + '）', 'warn'); }
   } catch(e){
-    if(e && e.name === 'NotFoundError') log('デバイスが選択されませんでした。バッジの画面が点いているか、SuperBand が強制停止されているか確認してください。', 'err');
-    else log('接続エラー: ' + (e && e.message ? e.message : String(e)), 'err');
+    if(e && e.name === 'NotFoundError'){ log('デバイスが選択されませんでした。バッジの画面が点いているか、SuperBand が強制停止されているか確認してください。', 'err'); }
+    else {
+      var emsg = (e && e.message ? e.message : String(e));
+      log('接続エラー: ' + emsg, 'err');
+      showConnError('接続が一瞬で切れてしまいました（' + emsg + '）', 'よくある原因は、SuperBand アプリが先にバッジとつながっていることです。' + CONN_CHECKLIST);
+    }
     connected = false; writeChar = null; notifyChar = null; server = null;
     setStatus('', '未接続');
   } finally {
@@ -416,7 +446,9 @@ async function connect(useAll){
 }
 function onDisconnected(){
   var wasTransferring = transferring;
+  var hadConnection = connected;
   connected = false; writeChar = null; notifyChar = null; server = null;
+  if(hadConnection && !wasTransferring) showConnError('接続が切れました', 'SuperBand がバッジに接続しに来たか、バッジの画面が消えた可能性があります。' + CONN_CHECKLIST);
   setStatus('', '未接続');
   failWaiter(new Error('バッジとの接続が切れました'));
   if(dialInfoReject){ var rj = dialInfoReject; dialInfoResolve = null; dialInfoReject = null; if(dialInfoTimer){ clearTimeout(dialInfoTimer); dialInfoTimer = null; } rj(new Error('接続が切れました')); }
