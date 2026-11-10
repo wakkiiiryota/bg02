@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BG02 写真プッシュ</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; background: #f4f6f8; color: #1c2430; }
+  main { max-width: 560px; margin: 0 auto; padding: 16px 14px 40px; }
+  h1 { font-size: 20px; margin: 6px 0 2px; }
+  .env { font-size: 11px; color: #66707d; margin-bottom: 12px; word-break: break-all; }
+  .card { background: #fff; border-radius: 14px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(20,30,50,.08); }
+  .step { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .num { width: 28px; height: 28px; border-radius: 50%; background: #2563eb; color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+  .step h2 { font-size: 16px; margin: 0; }
+  button.big { width: 100%; padding: 15px; font-size: 17px; font-weight: 700; border: none; border-radius: 12px; background: #2563eb; color: #fff; }
+  button.big:disabled { background: #b9c4d4; }
+  button.sub { padding: 9px 12px; font-size: 13px; border: 1px solid #c8d2e0; border-radius: 9px; background: #fff; color: #33507e; }
+  .linkbtn { display: inline-block; margin-top: 10px; font-size: 13px; color: #2563eb; background: none; border: none; padding: 4px 0; text-decoration: underline; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #c3ccd8; display: inline-block; margin-right: 7px; }
+  .dot.on { background: #22a355; } .dot.busy { background: #e0a100; }
+  .statusline { font-size: 14px; margin-bottom: 10px; }
+  .small { font-size: 12px; color: #66707d; margin-top: 8px; }
+  .hidden { display: none !important; }
+  .preview { text-align: center; margin-top: 12px; }
+  .preview img { width: 200px; height: 200px; border-radius: 50%; object-fit: cover; border: 3px solid #dbe3ee; background: #000; }
+  .progress-track { height: 12px; background: #e6ebf2; border-radius: 6px; overflow: hidden; margin-top: 12px; }
+  .progress-fill { height: 100%; width: 0%; background: #2563eb; transition: width .15s; }
+  .progress-fill.done { background: #22a355; } .progress-fill.err { background: #d33; }
+  .progress-meta { display: flex; justify-content: space-between; font-size: 12px; color: #66707d; margin-top: 6px; }
+  .banner { display: none; border-radius: 10px; padding: 12px; margin-top: 12px; font-size: 14px; font-weight: 700; }
+  .banner.show { display: block; }
+  .banner.ok { background: #e5f6ec; color: #146c39; }
+  .banner.ng { background: #fdecec; color: #962222; }
+  .banner .detail { display: block; font-weight: 400; font-size: 12.5px; margin-top: 5px; }
+  details { background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: 0 1px 3px rgba(20,30,50,.08); }
+  details summary { font-size: 14px; color: #33507e; cursor: pointer; }
+  .field { margin-top: 12px; } .field label { display: block; font-size: 12.5px; color: #66707d; margin-bottom: 4px; }
+  .field input[type=number], .field select { width: 100%; padding: 9px; font-size: 15px; border: 1px solid #c8d2e0; border-radius: 8px; }
+  .field input[type=range] { width: 100%; }
+  #logBox { margin-top: 12px; background: #0f1520; color: #c8e0c8; font-family: monospace; font-size: 11px; line-height: 1.5; border-radius: 10px; padding: 10px; height: 180px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  .foot { font-size: 12px; color: #66707d; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BG02 写真プッシュ</h1>
+  <div class="env" id="envText"></div>
+
+  <section class="card">
+    <div class="step"><span class="num">1</span><h2>バッジに接続</h2></div>
+    <div class="statusline"><span class="dot" id="statusDot"></span><span id="statusText">未接続</span></div>
+    <button class="big" id="btnConnect">BG02 に接続</button>
+    <button class="linkbtn" id="btnConnectAll">BG02 が一覧に出てこないときはこちら（すべてのデバイスを表示）</button>
+    <div class="small" id="deviceInfo"></div>
+    <div class="small" id="dialInfoText"></div>
+    <div style="margin-top:10px"><button class="sub hidden" id="btnDisconnect">切断</button></div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="num">2</span><h2>写真を選ぶ</h2></div>
+    <label class="big" for="fileInput" style="display:block;text-align:center;background:#0f9d63;cursor:pointer;border-radius:12px;">写真を選ぶ</label>
+    <input type="file" id="fileInput" accept="image/*" class="hidden">
+    <div class="preview hidden" id="previewWrap"><img id="previewImg" alt="送信イメージ（丸く切り取られて表示されます）"></div>
+    <div class="small" id="fileMeta">写真の真ん中が正方形に切り取られ、バッジの大きさ（240×240）で送られます。</div>
+  </section>
+
+  <section class="card">
+    <div class="step"><span class="num">3</span><h2>バッジに送る</h2></div>
+    <button class="big" id="btnPush" disabled>バッジに送る</button>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-meta"><span id="progressPhase">待機中</span><span id="progressCount">0 / 0 チャンク</span></div>
+    <div class="banner" id="resultBanner"></div>
+    <div class="small">送れないとき: 充電ケーブルを抜く ／ SuperBand を強制停止する ／ バッジの画面を点ける</div>
+  </section>
+
+  <details>
+    <summary>その他の設定（通常は触らなくてOK）</summary>
+    <div class="field"><label for="inQuality">画質（数字が大きいほど綺麗で、送信が少し長くなります）: <span id="qualityVal">50</span></label>
+      <input type="range" id="inQuality" min="10" max="95" step="5" value="50"></div>
+    <div class="field"><label for="inDialId">ダイヤルID</label><input type="number" id="inDialId" value="5538"></div>
+    <div class="field"><label for="inType">タイプ</label><input type="number" id="inType" value="2"></div>
+    <div class="field"><label for="inFlags">フラグ</label><input type="number" id="inFlags" value="8"></div>
+    <div class="field"><label for="inChunk">チャンク方式</label>
+      <select id="inChunk"><option value="498" selected>498（1フレームずつ確認）</option><option value="5000">5000（まとめて送信）</option></select></div>
+    <div class="field"><button class="sub" id="btnDialInfo" type="button">バッジ仕様を再取得</button></div>
+    <div id="logBox"></div>
+  </details>
+
+  <p class="foot">このページだけで完結します。SuperBand アプリは不要です。</p>
+</main>
+<script>
+(function(){
+"use strict";
+
+/* ===== 定数（FitPro ダイヤル転送） ===== */
+var UART_SERVICE = '7e400001-b5a3-f393-e0a9-e50e24dcca9d';
+var WRITE_CHAR   = '7e400002-b5a3-f393-e0a9-e50e24dcca9d';
+var NOTIFY_CHAR  = '7e400003-b5a3-f393-e0a9-e50e24dcca9d';
+var OPTIONAL_SERVICES = [UART_SERVICE, 0x180f, 0x180a];
+var PAIR_FRAME = new Uint8Array([0xCD, 0x00, 0x06, 0x12, 0x01, 0x0A, 0x00, 0x01, 0x02]);
+var MOD_DIAL   = 0x1F;
+var MOD_INFO   = 0x20;
+var MOD_LEGACY = 0x1A;
+var WRITE_PACE_MS = 6;
+var ACK_TIMEOUT_MS = 15000;
+var SLICE_SIZE = 244;   /* 5000バイト方式でフレームを分割送信するときの1書き込みサイズ */
+
+var STATUS_MESSAGES = {
+1: '検証に失敗しました',
+2: '成功ステータス（2）が予期しない段階で返りました',
+3: '電池が不足しています（充電してから再試行してください）',
+4: '充電中は転送できません（充電ケーブルを抜いて再試行してください）',
+5: 'バッジの容量が不足しています',
+6: 'テーマ数の上限に達しています',
+7: '重複した転送です',
+8: 'テーマIDが見つかりません',
+9: '転送が頻繁すぎます（少し待って再試行してください）'
+};
+
+/* ===== 状態 ===== */
+var device = null, server = null, writeChar = null, notifyChar = null;
+var connected = false, connecting = false, transferring = false;
+var fileBlob = null;         /* 送信するファイルのバイト列（Uint8Array） */
+var fileName = '';
+var asmBuf = new Uint8Array(0);
+var statusWaiter = null;     /* {expected, context, resolve, reject, timer, startedAt, lastPollAt} */
+var dialInfoResolve = null, dialInfoReject = null, dialInfoTimer = null;
+
+/* ===== DOM・ログ ===== */
+var el = function(id){ return document.getElementById(id); };
+var logBox = el('logBox');
+function stamp(){ var d = new Date(); function p(n){ return (n<10?'0':'')+n; } return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+function log(msg, kind){
+  var line = document.createElement('div');
+  if(kind) line.className = kind;
+  var t = document.createElement('span'); t.className = 't'; t.textContent = '['+stamp()+'] ';
+  line.appendChild(t); line.appendChild(document.createTextNode(msg));
+  logBox.appendChild(line); logBox.scrollTop = logBox.scrollHeight;
+}
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function hex2(n){ return ('0'+(n&0xff).toString(16)).slice(-2).toUpperCase(); }
+
+/* ===== バイトユーティリティ ===== */
+function putU16BE(out, off, v){ out[off] = (v>>8)&0xff; out[off+1] = v&0xff; }
+function putU32BE(out, off, v){ out[off] = (v>>>24)&0xff; out[off+1] = (v>>>16)&0xff; out[off+2] = (v>>>8)&0xff; out[off+3] = v&0xff; }
+function getU16BE(b, off){ return ((b[off]&0xff)<<8) | (b[off+1]&0xff); }
+function getU32BE(b, off){ return (((b[off]&0xff)<<24) | ((b[off+1]&0xff)<<16) | ((b[off+2]&0xff)<<8) | (b[off+3]&0xff)) >>> 0; }
+function byteSum(data){ var s = 0; for(var i=0;i<data.length;i++) s += data[i]&0xff; return s >>> 0; }
+function concatBytes(a, b){ var out = new Uint8Array(a.length + b.length); out.set(a, 0); out.set(b, a.length); return out; }
+
+/* ===== FitPro フレーム: CD | lenBE(全長-3) | module | 0x01 | cmd | payloadLenBE | payload ===== */
+function buildFrame(moduleId, cmd, payload){
+  payload = payload || new Uint8Array(0);
+  var total = 8 + payload.length;
+  var out = new Uint8Array(total);
+  out[0] = 0xCD;
+  putU16BE(out, 1, total - 3);
+  out[3] = moduleId & 0xff;
+  out[4] = 0x01;
+  out[5] = cmd & 0xff;
+  putU16BE(out, 6, payload.length);
+  if(payload.length) out.set(payload, 8);
+  return out;
+}
+
+/* 1フレームを書き込む。512バイト以下は1回で、大きい場合は SLICE_SIZE ごとに分割して流す */
+async function writeFrameBytes(bytes){
+  if(!writeChar) throw new Error('未接続です');
+  async function writeOnce(buf){
+    if(writeChar.properties.writeWithoutResponse) await writeChar.writeValueWithoutResponse(buf);
+    else await writeChar.writeValueWithResponse(buf);
+    await sleep(WRITE_PACE_MS);
+  }
+  if(bytes.length <= 512){ await writeOnce(bytes); return; }
+  for(var off = 0; off < bytes.length; off += SLICE_SIZE){
+    await writeOnce(bytes.subarray(off, Math.min(off + SLICE_SIZE, bytes.length)));
+  }
+}
+function sendFrame(moduleId, cmd, payload){ return writeFrameBytes(buildFrame(moduleId, cmd, payload)); }
+
+/* ===== PacketAssembler（notify の再組立） ===== */
+function assemblerPush(chunk){
+  var merged = new Uint8Array(asmBuf.length + chunk.length);
+  merged.set(asmBuf, 0); merged.set(chunk, asmBuf.length);
+  asmBuf = merged;
+  var packets = [];
+  while(asmBuf.length >= 3){
+    if(asmBuf[0] !== 0xCD){
+      var idx = asmBuf.indexOf(0xCD);
+      if(idx < 0){ asmBuf = new Uint8Array(0); break; }
+      asmBuf = asmBuf.slice(idx); continue;
+    }
+    var total = 3 + getU16BE(asmBuf, 1);
+    if(asmBuf.length < total) break;
+    packets.push(asmBuf.slice(0, total));
+    asmBuf = asmBuf.slice(total);
+  }
+  return packets;
+}
+function parseFrame(frame){
+  if(frame.length < 6 || frame[0] !== 0xCD) return null;
+  var payload = new Uint8Array(0);
+  if(frame.length >= 8){
+    var plen = getU16BE(frame, 6);
+    payload = frame.slice(8, Math.min(8 + plen, frame.length));
+  }
+  return { module: frame[3], cmd: frame[5], payload: payload, raw: frame };
+}
+
+function onNotify(event){
+  var dv = event.target.value;
+  var chunk = new Uint8Array(dv.byteLength);
+  chunk.set(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength));
+  var frames = assemblerPush(chunk);
+  for(var i=0;i<frames.length;i++){
+    var pkt = parseFrame(frames[i]);
+    if(!pkt) continue;
+    if((pkt.module === MOD_INFO || pkt.module === 0x23) && pkt.cmd === 1 && pkt.payload.length >= 4){
+      var code = getU32BE(pkt.payload, 0);
+      log('ステータス受信: ' + code + (pkt.module === 0x23 ? '（0x23）' : ''));
+      handleStatusCode(code);
+    } else if(pkt.module === MOD_INFO && pkt.cmd === 2){
+      if(dialInfoResolve){
+        var r = dialInfoResolve;
+        dialInfoResolve = null; dialInfoReject = null;
+        if(dialInfoTimer){ clearTimeout(dialInfoTimer); dialInfoTimer = null; }
+        r(pkt.payload);
+      } else {
+        log('受信: ダイヤル情報（応答待ちなし）');
+      }
+    } else {
+      log('受信: module=0x'+hex2(pkt.module)+' cmd='+pkt.cmd+'（'+pkt.raw.length+'バイト）');
+    }
+  }
+}
+
+/* ===== ステータス待機（15秒ルール＋ポール） ===== */
+function StatusAbortError(code){
+  this.name = 'StatusAbortError'; this.code = code;
+  this.message = 'ステータス '+code+': '+(STATUS_MESSAGES[code] || '不明なステータスです');
+}
+StatusAbortError.prototype = Object.create(Error.prototype);
+function clearWaiter(){ if(statusWaiter && statusWaiter.timer) clearInterval(statusWaiter.timer); statusWaiter = null; }
+function handleStatusCode(code){
+  var w = statusWaiter; if(!w) return;
+  if(code === w.expected){ var resolve = w.resolve; clearWaiter(); resolve(code); }
+  else if(code >= 1 && code <= 9){ var reject = w.reject; clearWaiter(); reject(new StatusAbortError(code)); }
+}
+function failWaiter(err){ var w = statusWaiter; if(!w) return; var reject = w.reject; clearWaiter(); reject(err); }
+function waitForStatus(expected, context, pollModule){
+  return new Promise(function(resolve, reject){
+    var startedAt = Date.now();
+    var w = { expected: expected, context: context, resolve: resolve, reject: reject, startedAt: startedAt, lastPollAt: startedAt, timer: null, pollModule: (pollModule === undefined ? MOD_INFO : pollModule) };
+    statusWaiter = w;
+    w.timer = setInterval(function(){
+      if(statusWaiter !== w){ clearInterval(w.timer); return; }
+      if(!connected){ clearInterval(w.timer); if(statusWaiter === w) statusWaiter = null; reject(new Error('バッジとの接続が切れました（'+context+' の応答待ち中）')); return; }
+      var remain = ACK_TIMEOUT_MS - (Date.now() - startedAt);
+      if(remain <= 0){ clearInterval(w.timer); if(statusWaiter === w) statusWaiter = null; reject(new Error('タイムアウト: '+context+' の応答（ステータス '+expected+'）が15秒以内に返りませんでした')); return; }
+      if(remain <= 10000 && (Date.now() - w.lastPollAt) >= 5000){
+        w.lastPollAt = Date.now();
+        log('応答待ち（'+context+'）… ステータスを確認します');
+        sendFrame(w.pollModule, 1, new Uint8Array(0)).catch(function(){});
+      }
+    }, 100);
+  });
+}
+
+/* ===== FitPro ハンドシェイク（0x1A の 10 / 12 / 28） ===== */
+async function fitProHandshake(){
+  var cmds = [10, 12, 28];
+  for(var i=0;i<cmds.length;i++){
+    if(!connected) break;
+    try { await sendFrame(MOD_LEGACY, cmds[i], new Uint8Array(0)); }
+    catch(e){ log('ハンドシェイク（cmd '+cmds[i]+'）でエラー: '+e.message+'（続行します）', 'warn'); }
+    await sleep(120);
+  }
+}
+
+/* ===== ダイヤル情報（0x20 / cmd 2） ===== */
+function parseDialInfo(payload){
+  if(!payload || payload.length < 6) return null;
+  try {
+    var info = {};
+    info.screenType = payload[0] & 0xff;
+    info.grade = payload[1] & 0xff;
+    info.width = getU16BE(payload, 2);
+    info.height = getU16BE(payload, 4);
+    var o = 6;
+    var mchLen = payload[o++] & 0xff;
+    info.mchModel = new TextDecoder().decode(payload.slice(o, o + mchLen)); o += mchLen;
+    var mainLen = payload[o++] & 0xff;
+    info.mainInModel = new TextDecoder().decode(payload.slice(o, o + mainLen)); o += mainLen;
+    info.config = (o < payload.length) ? (payload[o] & 0xff) : 0;
+    info.algorithm = (o + 1 < payload.length) ? (payload[o+1] & 0xff) : 0;
+    var i6 = o, i12 = i6 + 5;
+    var customerLen = (payload.length > i12) ? (payload[i12] & 0xff) : 0;
+    var i13 = i12 + customerLen;
+    info.pictureNums = (payload.length > i13 + 1) ? (payload[i13+1] & 0xff) : 0;
+    info.themeVersion = (payload.length >= i13 + 4) ? getU16BE(payload, i13 + 2) : 0;
+    info.shortPkgLength = (payload.length >= i13 + 6) ? getU16BE(payload, i13 + 4) : 0;
+    info.dialType = (info.algorithm === 4) ? 2 : 0;
+    info.jpeg = info.dialType === 2;
+    return info;
+  } catch(e){ return null; }
+}
+function requestDialInfo(){
+  return new Promise(function(resolve, reject){
+    dialInfoResolve = resolve; dialInfoReject = reject;
+    dialInfoTimer = setTimeout(function(){
+      dialInfoResolve = null; dialInfoReject = null;
+      reject(new Error('ダイヤル情報の応答が8秒以内に返りませんでした'));
+    }, 8000);
+    sendFrame(MOD_INFO, 2, new Uint8Array(0)).catch(function(e){
+      if(dialInfoTimer){ clearTimeout(dialInfoTimer); dialInfoTimer = null; }
+      dialInfoResolve = null; dialInfoReject = null;
+      reject(e);
+    });
+  });
+}
+
+/* ===== 環境チェック ===== */
+var btSupported = ('bluetooth' in navigator) && !!navigator.bluetooth;
+var inFrame = false;
+try { inFrame = (window.self !== window.top); } catch(e){ inFrame = true; }
+function runEnvCheck(){
+  var msgs = [];
+  msgs.push(window.isSecureContext ? 'HTTPS: OK' : 'HTTPS: NG（https:// で開いてください）');
+  msgs.push(btSupported ? 'Web Bluetooth API: OK' : 'Web Bluetooth API: NG（Android の Chrome で直接開いてください）');
+  msgs.push(inFrame ? '表示方法: 埋め込み表示（Bluetooth がブロックされることがあります）' : '表示方法: OK（直接表示）');
+  el('envText').textContent = msgs.join(' ／ ');
+  if(btSupported) log('準備完了。「BG02に接続」を押してください。');
+  else log('Web Bluetooth が使えない環境です。Chrome でこのページを直接開いてください。', 'err');
+}
+
+/* ===== 接続 ===== */
+function setStatus(state, text){
+  el('statusDot').className = 'dot' + (state === 'on' ? ' on' : state === 'busy' ? ' busy' : '');
+  el('statusText').textContent = text;
+}
+
+function updateButtons(){
+  el('btnConnect').disabled = connecting || connected;
+  el('btnConnectAll').disabled = connecting || connected;
+  el('btnDisconnect').classList.toggle('hidden', !connected);
+  el('btnPush').disabled = !(connected && fileBlob && !transferring);
+  el('fileInput').disabled = transferring;
+}
+
+function decodeText(view){
+  try { return new TextDecoder('utf-8').decode(view).replace(/ +$/, '').trim(); }
+  catch(e){ var out = ''; for(var i=0;i<view.byteLength;i++) out += String.fromCharCode(view.getUint8(i)); return out.trim(); }
+}
+async function readBattery(){
+  try {
+    var bs = await server.getPrimaryService(0x180f);
+    var bc = await bs.getCharacteristic(0x2a19);
+    var bv = await bc.readValue();
+    return bv.getUint8(0);
+  } catch(e){ return null; }
+}
+async function connect(useAll){
+  if(connecting || connected) return;
+  if(!btSupported){
+    log('この環境では Web Bluetooth が使えません。Android の Chrome で、このページを直接（埋め込みではなく）開いてください。', 'err');
+    return;
+  }
+  connecting = true; updateButtons();
+  setStatus('busy', 'デバイス選択待ち…');
+  try {
+    var options = useAll
+      ? { acceptAllDevices: true, optionalServices: OPTIONAL_SERVICES }
+      : { filters: [{ name: 'BG02' }], optionalServices: OPTIONAL_SERVICES };
+    device = await navigator.bluetooth.requestDevice(options);
+    log('選択されたデバイス: ' + (device.name || '（名前なし）'));
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    setStatus('busy', '接続中…');
+    server = await device.gatt.connect();
+    log('GATT 接続が完了しました。', 'ok');
+    var svc = await server.getPrimaryService(UART_SERVICE);
+    writeChar = await svc.getCharacteristic(WRITE_CHAR);
+    notifyChar = await svc.getCharacteristic(NOTIFY_CHAR);
+    log('UART サービスに接続しました。書き込み方式: ' + (writeChar.properties.writeWithoutResponse ? 'writeWithoutResponse' : 'writeWithResponse'));
+    asmBuf = new Uint8Array(0);
+    clearWaiter();
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener('characteristicvaluechanged', onNotify);
+    log('通知（7e400003）を開始しました。');
+    await writeFrameBytes(PAIR_FRAME);
+    log('ペアフレームを送信しました。');
+    await sleep(350);
+    connected = true;
+    setStatus('on', '接続中：' + (device.name || 'BG02'));
+    updateButtons();
+    var battery = await readBattery();
+    el('deviceInfo').textContent = '電池残量: ' + (battery === null ? '不明' : battery + '%') + (battery !== null && battery < 30 ? '（30%未満では転送が拒否されることがあります）' : '');
+    if(battery !== null) log('電池残量: ' + battery + '%', 'ok');
+    log('FitPro ハンドシェイクを送信します。');
+    await fitProHandshake();
+    log('接続の準備が完了しました。', 'ok');
+    try {
+      var diPayload = await requestDialInfo();
+      var di = parseDialInfo(diPayload);
+      if(di) applyDialInfo(di);
+    } catch(e){ log('バッジ仕様の自動取得はスキップしました（' + e.message + '）', 'warn'); }
+  } catch(e){
+    if(e && e.name === 'NotFoundError') log('デバイスが選択されませんでした。バッジの画面が点いているか、SuperBand が強制停止されているか確認してください。', 'err');
+    else log('接続エラー: ' + (e && e.message ? e.message : String(e)), 'err');
+    connected = false; writeChar = null; notifyChar = null; server = null;
+    setStatus('', '未接続');
+  } finally {
+    connecting = false; updateButtons();
+  }
+}
+function onDisconnected(){
+  var wasTransferring = transferring;
+  connected = false; writeChar = null; notifyChar = null; server = null;
+  setStatus('', '未接続');
+  failWaiter(new Error('バッジとの接続が切れました'));
+  if(dialInfoReject){ var rj = dialInfoReject; dialInfoResolve = null; dialInfoReject = null; if(dialInfoTimer){ clearTimeout(dialInfoTimer); dialInfoTimer = null; } rj(new Error('接続が切れました')); }
+  log(wasTransferring ? '転送中に接続が切れました。転送を中断します。' : '切断されました。', 'warn');
+  if(wasTransferring) showResult(false, '接続が切れたため転送を中断しました', 'バッジの画面と電池を確認して、接続からやり直してください。');
+  updateButtons();
+}
+el('btnConnect').addEventListener('click', function(){ connect(false); });
+el('btnConnectAll').addEventListener('click', function(){ connect(true); });
+el('btnDisconnect').addEventListener('click', function(){
+  try { if(device && device.gatt && device.gatt.connected){ device.gatt.disconnect(); log('切断しました。'); } } catch(e){ log('切断時にエラー: ' + e.message, 'err'); }
+  if(!device || !device.gatt || !device.gatt.connected){ connected = false; setStatus('', '未接続'); updateButtons(); }
+});
+var totalChunksNow = 0;
+function setProgress(done, phaseText, state){
+  var pct = totalChunksNow ? Math.round(done / totalChunksNow * 100) : 0;
+  el('progressFill').style.width = pct + '%';
+  el('progressFill').className = 'progress-fill' + (state === 'err' ? ' err' : state === 'done' ? ' done' : '');
+  el('progressCount').textContent = done + ' / ' + totalChunksNow + ' チャンク';
+  el('progressPhase').textContent = phaseText;
+}
+function resetProgress(){
+  el('progressFill').style.width = '0%';
+  el('progressFill').className = 'progress-fill';
+  el('progressCount').textContent = '0 / 0 チャンク';
+  el('progressPhase').textContent = fileBlob ? 'プッシュ待ち' : '待機中';
+  el('resultBanner').className = 'banner';
+  el('resultBanner').textContent = '';
+}
+function showResult(ok, title, detail){
+  var b = el('resultBanner');
+  b.className = 'banner show ' + (ok ? 'ok' : 'ng');
+  b.textContent = '';
+  var t = document.createElement('span'); t.textContent = title; b.appendChild(t);
+  if(detail){ var d = document.createElement('span'); d.className = 'detail'; d.textContent = detail; b.appendChild(d); }
+}
+
+/* ===== 転送手順（画像で成功した手順と同じ。blob と START の値だけ差し替え） ===== */
+/* ===== JPEG 4:4:4 エンコーダ（参照クライアントと同一） ===== */
+/**
+ * Baseline JPEG encoder with YCbCr 4:4:4 (no chroma subsampling).
+ *
+ * Required for FitPro dial push: Android TurboJpegCompressor uses subsample=0
+ * (TJSAMP_444). Browser canvas.toBlob() emits 4:2:0, which fails the app's
+ * JpegRulesChecker MCU rule on 360×360 (360 % 16 ≠ 0) and shows a black dial.
+ *
+ * Output: SOI + JFIF APP0 + DQT + SOF0 + DHT + SOS + scan + EOI.
+ * No ICC / APP2, no progressive, no restart markers.
+ */
+
+const ZIGZAG = [
+  0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5, 12, 19, 26, 33, 40, 48,
+  41, 34, 27, 20, 13, 6, 7, 14, 21, 28, 35, 42, 49, 56, 57, 50, 43, 36, 29, 22,
+  15, 23, 30, 37, 44, 51, 58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55,
+  62, 63,
+];
+
+// Standard JPEG luminance / chrominance quantization (quality-scaled later)
+const STD_LUM_QUANT = [
+  16, 11, 10, 16, 24, 40, 51, 61, 12, 12, 14, 19, 26, 58, 60, 55, 14, 13, 16, 24,
+  40, 57, 69, 56, 14, 17, 22, 29, 51, 87, 80, 62, 18, 22, 37, 56, 68, 109, 103,
+  77, 24, 35, 55, 64, 81, 104, 113, 92, 49, 64, 78, 87, 103, 121, 120, 101, 72,
+  92, 95, 98, 112, 100, 103, 99,
+];
+
+const STD_CHROM_QUANT = [
+  17, 18, 24, 47, 99, 99, 99, 99, 18, 21, 26, 66, 99, 99, 99, 99, 24, 26, 56, 99,
+  99, 99, 99, 99, 47, 66, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+  99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+  99, 99, 99, 99,
+];
+
+const STD_DC_LUM_NRCODES = [0, 0, 1, 5, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0];
+const STD_DC_LUM_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+const STD_AC_LUM_NRCODES = [0, 0, 2, 1, 3, 3, 2, 4, 3, 5, 5, 4, 4, 0, 0, 1, 0x7d];
+const STD_AC_LUM_VALUES = [
+  0x01, 0x02, 0x03, 0x00, 0x04, 0x11, 0x05, 0x12, 0x21, 0x31, 0x41, 0x06, 0x13,
+  0x51, 0x61, 0x07, 0x22, 0x71, 0x14, 0x32, 0x81, 0x91, 0xa1, 0x08, 0x23, 0x42,
+  0xb1, 0xc1, 0x15, 0x52, 0xd1, 0xf0, 0x24, 0x33, 0x62, 0x72, 0x82, 0x09, 0x0a,
+  0x16, 0x17, 0x18, 0x19, 0x1a, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x34, 0x35,
+  0x36, 0x37, 0x38, 0x39, 0x3a, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4a,
+  0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x63, 0x64, 0x65, 0x66, 0x67,
+  0x68, 0x69, 0x6a, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x83, 0x84,
+  0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98,
+  0x99, 0x9a, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xb2, 0xb3,
+  0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6, 0xc7,
+  0xc8, 0xc9, 0xca, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9, 0xda, 0xe1,
+  0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xf1, 0xf2, 0xf3, 0xf4,
+  0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa,
+];
+
+const STD_DC_CHROM_NRCODES = [0, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0];
+const STD_DC_CHROM_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+const STD_AC_CHROM_NRCODES = [0, 0, 2, 1, 2, 4, 4, 3, 4, 7, 5, 4, 4, 0, 1, 2, 0x77];
+const STD_AC_CHROM_VALUES = [
+  0x00, 0x01, 0x02, 0x03, 0x11, 0x04, 0x05, 0x21, 0x31, 0x06, 0x12, 0x41, 0x51,
+  0x07, 0x61, 0x71, 0x13, 0x22, 0x32, 0x81, 0x08, 0x14, 0x42, 0x91, 0xa1, 0xb1,
+  0xc1, 0x09, 0x23, 0x33, 0x52, 0xf0, 0x15, 0x62, 0x72, 0xd1, 0x0a, 0x16, 0x24,
+  0x34, 0xe1, 0x25, 0xf1, 0x17, 0x18, 0x19, 0x1a, 0x26, 0x27, 0x28, 0x29, 0x2a,
+  0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
+  0x4a, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a, 0x63, 0x64, 0x65, 0x66,
+  0x67, 0x68, 0x69, 0x6a, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x82,
+  0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a, 0x92, 0x93, 0x94, 0x95, 0x96,
+  0x97, 0x98, 0x99, 0x9a, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa,
+  0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xc2, 0xc3, 0xc4, 0xc5,
+  0xc6, 0xc7, 0xc8, 0xc9, 0xca, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6, 0xd7, 0xd8, 0xd9,
+  0xda, 0xe2, 0xe3, 0xe4, 0xe5, 0xe6, 0xe7, 0xe8, 0xe9, 0xea, 0xf2, 0xf3, 0xf4,
+  0xf5, 0xf6, 0xf7, 0xf8, 0xf9, 0xfa,
+];
+
+function scaleQuantTable(base, quality) {
+  let q = Math.max(1, Math.min(100, quality | 0));
+  const scale = q < 50 ? Math.floor(5000 / q) : Math.floor(200 - q * 2);
+  const out = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    const v = Math.floor((base[i] * scale + 50) / 100);
+    out[i] = Math.max(1, Math.min(255, v));
+  }
+  return out;
+}
+
+function buildHuffmanTable(nrcodes, values) {
+  const codes = new Array(256);
+  // nrcodes[0] unused; indices 1..16 are code-length counts (JPEG DHT)
+  let code = 0;
+  let k = 0;
+  for (let i = 1; i <= 16; i++) {
+    for (let j = 0; j < nrcodes[i]; j++) {
+      codes[values[k]] = { len: i, code };
+      k++;
+      code++;
+    }
+    code <<= 1;
+  }
+  return codes;
+}
+
+const HT_DC_Y = buildHuffmanTable(STD_DC_LUM_NRCODES, STD_DC_LUM_VALUES);
+const HT_AC_Y = buildHuffmanTable(STD_AC_LUM_NRCODES, STD_AC_LUM_VALUES);
+const HT_DC_UV = buildHuffmanTable(STD_DC_CHROM_NRCODES, STD_DC_CHROM_VALUES);
+const HT_AC_UV = buildHuffmanTable(STD_AC_CHROM_NRCODES, STD_AC_CHROM_VALUES);
+
+function categoryOf(n) {
+  let abs = n < 0 ? -n : n;
+  let cat = 0;
+  while (abs) {
+    abs >>= 1;
+    cat++;
+  }
+  return cat;
+}
+
+function bitBits(n, cat) {
+  if (n < 0) n = n - 1 + (1 << cat);
+  return n & ((1 << cat) - 1);
+}
+
+class BitWriter {
+  constructor() {
+    this.bytes = [];
+    this.bitbuf = 0;
+    this.bitcnt = 0;
+  }
+
+  writeBits(code, len) {
+    if (len === 0) return;
+    this.bitbuf = (this.bitbuf << len) | (code & ((1 << len) - 1));
+    this.bitcnt += len;
+    while (this.bitcnt >= 8) {
+      const b = (this.bitbuf >> (this.bitcnt - 8)) & 0xff;
+      this.bytes.push(b);
+      if (b === 0xff) this.bytes.push(0x00); // byte stuffing
+      this.bitcnt -= 8;
+    }
+  }
+
+  writeHuffman(ht, symbol) {
+    const e = ht[symbol];
+    if (!e) throw new Error(`Missing Huffman symbol 0x${symbol.toString(16)}`);
+    this.writeBits(e.code, e.len);
+  }
+
+  padToByte() {
+    if (this.bitcnt > 0) {
+      const pad = 8 - this.bitcnt;
+      this.writeBits((1 << pad) - 1, pad);
+    }
+  }
+
+  toUint8Array() {
+    return new Uint8Array(this.bytes);
+  }
+}
+
+/** FDCT on 8×8 float block (in-place AAN-ish / float DCT). */
+function fDCT(block) {
+  // Based on independent JPEG group's float FDCT (LL&M)
+  for (let i = 0; i < 8; i++) {
+    const p = i * 8;
+    let d0 = block[p];
+    let d1 = block[p + 1];
+    let d2 = block[p + 2];
+    let d3 = block[p + 3];
+    let d4 = block[p + 4];
+    let d5 = block[p + 5];
+    let d6 = block[p + 6];
+    let d7 = block[p + 7];
+    let tmp0 = d0 + d7;
+    let tmp7 = d0 - d7;
+    let tmp1 = d1 + d6;
+    let tmp6 = d1 - d6;
+    let tmp2 = d2 + d5;
+    let tmp5 = d2 - d5;
+    let tmp3 = d3 + d4;
+    let tmp4 = d3 - d4;
+    let tmp10 = tmp0 + tmp3;
+    let tmp13 = tmp0 - tmp3;
+    let tmp11 = tmp1 + tmp2;
+    let tmp12 = tmp1 - tmp2;
+    block[p] = tmp10 + tmp11;
+    block[p + 4] = tmp10 - tmp11;
+    let z1 = (tmp12 + tmp13) * 0.707106781;
+    block[p + 2] = tmp13 + z1;
+    block[p + 6] = tmp13 - z1;
+    tmp10 = tmp4 + tmp5;
+    tmp11 = tmp5 + tmp6;
+    tmp12 = tmp6 + tmp7;
+    const z5 = (tmp10 - tmp12) * 0.382683433;
+    const z2 = 0.5411961 * tmp10 + z5;
+    const z4 = 1.306562965 * tmp12 + z5;
+    const z3 = tmp11 * 0.707106781;
+    const z11 = tmp7 + z3;
+    const z13 = tmp7 - z3;
+    block[p + 5] = z13 + z2;
+    block[p + 3] = z13 - z2;
+    block[p + 1] = z11 + z4;
+    block[p + 7] = z11 - z4;
+  }
+  for (let i = 0; i < 8; i++) {
+    let d0 = block[i];
+    let d1 = block[i + 8];
+    let d2 = block[i + 16];
+    let d3 = block[i + 24];
+    let d4 = block[i + 32];
+    let d5 = block[i + 40];
+    let d6 = block[i + 48];
+    let d7 = block[i + 56];
+    let tmp0 = d0 + d7;
+    let tmp7 = d0 - d7;
+    let tmp1 = d1 + d6;
+    let tmp6 = d1 - d6;
+    let tmp2 = d2 + d5;
+    let tmp5 = d2 - d5;
+    let tmp3 = d3 + d4;
+    let tmp4 = d3 - d4;
+    let tmp10 = tmp0 + tmp3;
+    let tmp13 = tmp0 - tmp3;
+    let tmp11 = tmp1 + tmp2;
+    let tmp12 = tmp1 - tmp2;
+    block[i] = tmp10 + tmp11;
+    block[i + 32] = tmp10 - tmp11;
+    let z1 = (tmp12 + tmp13) * 0.707106781;
+    block[i + 16] = tmp13 + z1;
+    block[i + 48] = tmp13 - z1;
+    tmp10 = tmp4 + tmp5;
+    tmp11 = tmp5 + tmp6;
+    tmp12 = tmp6 + tmp7;
+    const z5 = (tmp10 - tmp12) * 0.382683433;
+    const z2 = 0.5411961 * tmp10 + z5;
+    const z4 = 1.306562965 * tmp12 + z5;
+    const z3 = tmp11 * 0.707106781;
+    const z11 = tmp7 + z3;
+    const z13 = tmp7 - z3;
+    block[i + 40] = z13 + z2;
+    block[i + 24] = z13 - z2;
+    block[i + 8] = z11 + z4;
+    block[i + 56] = z11 - z4;
+  }
+}
+
+function quantize(block, qtable) {
+  const out = new Int16Array(64);
+  // AAN scaling factors for float FDCT output → quantize
+  const aan = [
+    1.0, 1.387039845, 1.306562965, 1.175875602, 1.0, 0.785694958, 0.5411961,
+    0.275899379,
+  ];
+  for (let z = 0; z < 64; z++) {
+    const i = ZIGZAG[z];
+    const r = i >> 3;
+    const c = i & 7;
+    const v = block[i] / (aan[r] * aan[c] * 8);
+    out[z] = Math.round(v / qtable[i]);
+  }
+  return out;
+}
+
+function encodeDU(bw, coeffs, prevDC, htDC, htAC) {
+  let dc = coeffs[0];
+  let diff = dc - prevDC;
+  if (diff === 0) {
+    bw.writeHuffman(htDC, 0);
+  } else {
+    const cat = categoryOf(diff);
+    bw.writeHuffman(htDC, cat);
+    bw.writeBits(bitBits(diff, cat), cat);
+  }
+  // AC
+  let end0 = 63;
+  while (end0 > 0 && coeffs[end0] === 0) end0--;
+  if (end0 === 0) {
+    bw.writeHuffman(htAC, 0x00); // EOB
+    return dc;
+  }
+  let i = 1;
+  while (i <= end0) {
+    let start = i;
+    while (i <= end0 && coeffs[i] === 0) i++;
+    let run = i - start;
+    while (run >= 16) {
+      bw.writeHuffman(htAC, 0xf0);
+      run -= 16;
+    }
+    const ac = coeffs[i];
+    const cat = categoryOf(ac);
+    bw.writeHuffman(htAC, (run << 4) | cat);
+    bw.writeBits(bitBits(ac, cat), cat);
+    i++;
+  }
+  if (end0 !== 63) bw.writeHuffman(htAC, 0x00);
+  return dc;
+}
+
+function writeMarker(out, marker) {
+  out.push(0xff, marker);
+}
+
+function writeSegment(out, marker, payload) {
+  writeMarker(out, marker);
+  const len = payload.length + 2;
+  out.push((len >> 8) & 0xff, len & 0xff);
+  for (let i = 0; i < payload.length; i++) out.push(payload[i]);
+}
+
+function writeDQT(out, id, table) {
+  const payload = [id];
+  for (let i = 0; i < 64; i++) payload.push(table[ZIGZAG[i]]);
+  writeSegment(out, 0xdb, payload);
+}
+
+function writeDHT(out, isAC, id, nrcodes, values) {
+  const payload = [(isAC ? 0x10 : 0x00) | id];
+  for (let i = 1; i <= 16; i++) payload.push(nrcodes[i]);
+  for (let i = 0; i < values.length; i++) payload.push(values[i]);
+  writeSegment(out, 0xc4, payload);
+}
+
+/**
+ * @param {ImageData| {data: Uint8ClampedArray|Uint8Array, width: number, height: number}} image
+ * @param {{ quality?: number }} [opts]
+ * @returns {Uint8Array}
+ */
+function encodeBaselineJpeg444(image, { quality = 50 } = {}) {
+  const width = image.width | 0;
+  const height = image.height | 0;
+  const rgba = image.data;
+  if (!width || !height) throw new Error('Invalid image size');
+  if (width % 8 !== 0 || height % 8 !== 0) {
+    throw new Error(`JPEG 4:4:4 requires size multiple of 8 (got ${width}×${height})`);
+  }
+
+  const yqt = scaleQuantTable(STD_LUM_QUANT, quality);
+  const uvqt = scaleQuantTable(STD_CHROM_QUANT, quality);
+
+  const out = [];
+  // SOI
+  out.push(0xff, 0xd8);
+  // JFIF APP0
+  writeSegment(out, 0xe0, [
+    0x4a, 0x46, 0x49, 0x46, 0x00, // JFIF\0
+    0x01, 0x01, // version 1.1
+    0x00, // density unit
+    0x00, 0x01, 0x00, 0x01, // 1x1 dens
+    0x00, 0x00, // no thumbnail
+  ]);
+  writeDQT(out, 0, yqt);
+  writeDQT(out, 1, uvqt);
+  // SOF0 — baseline, 8-bit, 3 components, all 4:4:4 (H=1 V=1)
+  writeSegment(out, 0xc0, [
+    0x08,
+    (height >> 8) & 0xff,
+    height & 0xff,
+    (width >> 8) & 0xff,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x11,
+    0x00, // Y: 1x1, QT0
+    0x02,
+    0x11,
+    0x01, // Cb
+    0x03,
+    0x11,
+    0x01, // Cr
+  ]);
+  writeDHT(out, false, 0, STD_DC_LUM_NRCODES, STD_DC_LUM_VALUES);
+  writeDHT(out, true, 0, STD_AC_LUM_NRCODES, STD_AC_LUM_VALUES);
+  writeDHT(out, false, 1, STD_DC_CHROM_NRCODES, STD_DC_CHROM_VALUES);
+  writeDHT(out, true, 1, STD_AC_CHROM_NRCODES, STD_AC_CHROM_VALUES);
+  // SOS
+  writeSegment(out, 0xda, [0x03, 0x01, 0x00, 0x02, 0x11, 0x03, 0x11, 0x00, 0x3f, 0x00]);
+
+  const bw = new BitWriter();
+  let dcY = 0;
+  let dcU = 0;
+  let dcV = 0;
+  const block = new Float64Array(64);
+
+  for (let by = 0; by < height; by += 8) {
+    for (let bx = 0; bx < width; bx += 8) {
+      // Y
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const sx = Math.min(width - 1, bx + x);
+          const sy = Math.min(height - 1, by + y);
+          const i = (sy * width + sx) * 4;
+          const r = rgba[i];
+          const g = rgba[i + 1];
+          const b = rgba[i + 2];
+          block[y * 8 + x] = 0.299 * r + 0.587 * g + 0.114 * b - 128;
+        }
+      }
+      fDCT(block);
+      let coeffs = quantize(block, yqt);
+      dcY = encodeDU(bw, coeffs, dcY, HT_DC_Y, HT_AC_Y);
+
+      // Cb
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const sx = Math.min(width - 1, bx + x);
+          const sy = Math.min(height - 1, by + y);
+          const i = (sy * width + sx) * 4;
+          const r = rgba[i];
+          const g = rgba[i + 1];
+          const b = rgba[i + 2];
+          block[y * 8 + x] = -0.168736 * r - 0.331264 * g + 0.5 * b;
+        }
+      }
+      fDCT(block);
+      coeffs = quantize(block, uvqt);
+      dcU = encodeDU(bw, coeffs, dcU, HT_DC_UV, HT_AC_UV);
+
+      // Cr
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const sx = Math.min(width - 1, bx + x);
+          const sy = Math.min(height - 1, by + y);
+          const i = (sy * width + sx) * 4;
+          const r = rgba[i];
+          const g = rgba[i + 1];
+          const b = rgba[i + 2];
+          block[y * 8 + x] = 0.5 * r - 0.418688 * g - 0.081312 * b;
+        }
+      }
+      fDCT(block);
+      coeffs = quantize(block, uvqt);
+      dcV = encodeDU(bw, coeffs, dcV, HT_DC_UV, HT_AC_UV);
+    }
+  }
+
+  bw.padToByte();
+  const scan = bw.toUint8Array();
+  for (let i = 0; i < scan.length; i++) out.push(scan[i]);
+  out.push(0xff, 0xd9);
+  return new Uint8Array(out);
+}
+
+/** Quick structural check used by tests / UI diagnostics. */
+function describeJpeg(bytes) {
+  if (!bytes || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    return { ok: false, reason: 'not JPEG' };
+  }
+  let i = 2;
+  let jfif = false;
+  let progressive = false;
+  let samp = null;
+  let width = 0;
+  let height = 0;
+  while (i + 3 < bytes.length) {
+    if (bytes[i] !== 0xff) {
+      i++;
+      continue;
+    }
+    const m = bytes[i + 1];
+    if (m === 0xd9) break;
+    if (m === 0xda) break;
+    if (m === 0x00 || m === 0xff) {
+      i++;
+      continue;
+    }
+    const len = (bytes[i + 2] << 8) | bytes[i + 3];
+    if (m === 0xe0 && len >= 7) {
+      const tag = String.fromCharCode(bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]);
+      if (tag.startsWith('JFIF')) jfif = true;
+    }
+    if (m === 0xc2) progressive = true;
+    if (m === 0xc0 && len >= 17) {
+      height = (bytes[i + 5] << 8) | bytes[i + 6];
+      width = (bytes[i + 7] << 8) | bytes[i + 8];
+      const ySamp = bytes[i + 11];
+      const cbSamp = bytes[i + 14];
+      const crSamp = bytes[i + 17];
+      samp = { y: ySamp, cb: cbSamp, cr: crSamp };
+    }
+    i += 2 + len;
+  }
+  const is444 = samp && samp.y === 0x11 && samp.cb === 0x11 && samp.cr === 0x11;
+  const mcuOk = is444 ? width % 8 === 0 && height % 8 === 0 : width % 16 === 0 && height % 16 === 0;
+  return {
+    ok: jfif && !progressive && is444 && mcuOk,
+    jfif,
+    progressive,
+    is444: !!is444,
+    width,
+    height,
+    sampling: samp,
+    mcuOk,
+  };
+}
+
+
+/* ===== バッジ仕様（接続時に自動取得） ===== */
+var dialW = 240, dialH = 240;
+function applyDialInfo(info){
+  dialW = info.width; dialH = info.height;
+  var txt = 'バッジ仕様: ' + info.width + '×' + info.height + ' ／ ' + (info.jpeg ? 'JPEG（タイプ2）' : 'タイプ0') + ' ／ モデル ' + info.mchModel;
+  el('dialInfoText').textContent = txt;
+  log('ダイヤル情報: ' + txt, 'ok');
+  if(srcBitmap) encodeFromSource();
+}
+el('btnDialInfo').addEventListener('click', async function(){
+  if(!connected){ log('先に接続してください。', 'warn'); return; }
+  try {
+    var payload = await requestDialInfo();
+    var info = parseDialInfo(payload);
+    if(info) applyDialInfo(info); else log('ダイヤル情報の解析に失敗しました。', 'warn');
+  } catch(e){ log('ダイヤル情報の取得に失敗: ' + e.message, 'err'); }
+});
+
+/* ===== 写真の準備（240×240 JPEG 4:4:4、中央を正方形に切り取り） ===== */
+var srcBitmap = null;
+async function encodeFromSource(){
+  if(!srcBitmap) return;
+  var q = parseInt(el('inQuality').value, 10);
+  if(!(q >= 1 && q <= 100)) q = 50;
+  var canvas = document.createElement('canvas');
+  canvas.width = dialW; canvas.height = dialH;
+  var ctx = canvas.getContext('2d');
+  var sw = srcBitmap.videoWidth || srcBitmap.naturalWidth || srcBitmap.width;
+  var sh = srcBitmap.videoHeight || srcBitmap.naturalHeight || srcBitmap.height;
+  var scale = Math.max(dialW / sw, dialH / sh);
+  var dw = sw * scale, dh = sh * scale;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, dialW, dialH);
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(srcBitmap, (dialW - dw) / 2, (dialH - dh) / 2, dw, dh);
+  var imageData = ctx.getImageData(0, 0, dialW, dialH);
+  var bytes = encodeBaselineJpeg444(imageData, { quality: q });
+  var meta = describeJpeg(bytes);
+  if(!meta.ok){ log('JPEG の生成がバッジのルールを満たしませんでした。', 'err'); fileBlob = null; updateButtons(); return; }
+  fileBlob = bytes;
+  el('previewImg').src = canvas.toDataURL('image/png');
+  el('previewWrap').classList.remove('hidden');
+  el('fileMeta').textContent = fileName + ' → ' + dialW + '×' + dialH + ' JPEG 4:4:4 ／ ' + bytes.length + ' バイト（画質 ' + q + '）';
+  log('写真を変換しました: ' + dialW + '×' + dialH + ' JPEG 4:4:4、' + bytes.length + ' バイト', 'ok');
+  resetProgress();
+  updateButtons();
+}
+el('fileInput').addEventListener('change', async function(){
+  var file = el('fileInput').files && el('fileInput').files[0];
+  if(!file) return;
+  fileName = file.name;
+  try {
+    if(window.createImageBitmap){
+      srcBitmap = await createImageBitmap(file);
+    } else {
+      srcBitmap = await new Promise(function(res, rej){
+        var img = new Image();
+        img.onload = function(){ res(img); };
+        img.onerror = rej;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+    await encodeFromSource();
+  } catch(e){
+    log('写真の読み込みに失敗しました: ' + (e && e.message ? e.message : String(e)), 'err');
+  }
+});
+el('inQuality').addEventListener('input', function(){
+  el('qualityVal').textContent = el('inQuality').value;
+  if(srcBitmap) encodeFromSource();
+});
+
+/* ===== 写真プッシュ（ダイヤル転送。成功済みの手順そのまま） ===== */
+async function pushImage(){
+  if(transferring) return;
+  if(!connected || !writeChar){ log('先に BG02 に接続してください。', 'err'); return; }
+  if(!fileBlob){ log('先に写真を選んでください。', 'err'); return; }
+  var dialId = parseInt(el('inDialId').value, 10);
+  var dialType = parseInt(el('inType').value, 10);
+  var flags = parseInt(el('inFlags').value, 10);
+  var chunkSize = parseInt(el('inChunk').value, 10);
+  if(!(dialId >= 0)) dialId = 5538;
+  if(!(dialType >= 0 && dialType <= 255)) dialType = 2;
+  if(!(flags >= 0 && flags <= 255)) flags = 8;
+  if(chunkSize !== 498 && chunkSize !== 5000) chunkSize = 498;
+  var blob = fileBlob;
+  totalChunksNow = Math.ceil(blob.length / chunkSize);
+  transferring = true;
+  el('resultBanner').className = 'banner';
+  updateButtons();
+  var currentChunk = 0;
+  try {
+    log('プッシュを開始します（' + blob.length + ' バイト、チャンク ' + chunkSize + ' × ' + totalChunksNow + '）。');
+    setProgress(0, 'ハンドシェイク送信中…', '');
+    await fitProHandshake();
+    await sleep(200);
+    if(!connected) throw new Error('バッジとの接続が切れました（開始前）');
+    var startPayload = new Uint8Array(17);
+    putU32BE(startPayload, 0, dialId);
+    startPayload[4] = dialType;
+    startPayload[5] = flags;
+    startPayload[6] = 0; startPayload[7] = 0; startPayload[8] = 0;
+    putU32BE(startPayload, 9, blob.length);
+    setProgress(0, '開始確認を待っています…', '');
+    await sendFrame(MOD_DIAL, 2, startPayload);
+    await waitForStatus(1000, 'START（開始確認）');
+    log('開始確認 OK。送信を始めます。', 'ok');
+    for(var seq = 1; seq <= totalChunksNow; seq++){
+      if(!connected) throw new Error('バッジとの接続が切れました（チャンク ' + seq + ' の送信前）');
+      currentChunk = seq;
+      var begin = (seq - 1) * chunkSize;
+      var end = Math.min(begin + chunkSize, blob.length);
+      var chunk = blob.subarray(begin, end);
+      var head = new Uint8Array(2 + chunk.length);
+      putU16BE(head, 0, seq);
+      head.set(chunk, 2);
+      var sumBytes = new Uint8Array(4);
+      putU32BE(sumBytes, 0, byteSum(head));
+      var payload = concatBytes(head, sumBytes);
+      await sendFrame(MOD_DIAL, 1, payload);
+      await waitForStatus(1000 + seq, 'チャンク ' + seq + ' / ' + totalChunksNow);
+      setProgress(seq, '送信中… ' + seq + ' / ' + totalChunksNow, '');
+    }
+    setProgress(totalChunksNow, '完了確認を待っています…', '');
+    var finPayload = new Uint8Array(4);
+    putU32BE(finPayload, 0, byteSum(blob));
+    await sendFrame(MOD_DIAL, 3, finPayload);
+    await waitForStatus(2, 'FINISH（完了確認）');
+    setProgress(totalChunksNow, '完了', 'done');
+    showResult(true, '写真を送れました', 'バッジの画面で確認してください。別の写真に変えたいときは、写真を選び直して「送る」を押すだけです。');
+    log('転送完了（ステータス2）。', 'ok');
+  } catch(e){
+    var msg = (e && e.message) ? e.message : String(e);
+    if(e && e.name === 'StatusAbortError'){
+      setProgress(currentChunk, 'バッジが転送を拒否しました', 'err');
+      showResult(false, '送れませんでした（ステータス ' + e.code + '）', msg + '。充電中は送れません（ケーブルを抜く）。電池が少ない・容量不足でも拒否されます。');
+      log('転送が拒否されました: ' + msg, 'err');
+    } else if(msg.indexOf('タイムアウト') === 0){
+      setProgress(currentChunk, 'タイムアウトで停止', 'err');
+      showResult(false, '応答がなく止まりました', 'バッジの画面が点いているか、SuperBand が強制停止されているか確認して、接続からやり直してください。');
+      log(msg, 'err');
+    } else {
+      setProgress(currentChunk, 'エラーで停止', 'err');
+      showResult(false, '転送中にエラーが発生しました', msg);
+      log('転送エラー: ' + msg, 'err');
+    }
+  } finally {
+    transferring = false;
+    updateButtons();
+  }
+}
+el('btnPush').addEventListener('click', function(){ pushImage(); });
+
+runEnvCheck();
+updateButtons();
+})();
+
+
+</script>
+</body>
+</html>
